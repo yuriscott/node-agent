@@ -1,22 +1,29 @@
 FROM golang:1.23-bullseye AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN sed -i 's@//.*deb.debian.org@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list
 RUN apt update && apt install -y libsystemd-dev
+ENV GOPROXY="https://goproxy.cn"
 WORKDIR /tmp/src
 COPY go.mod .
 COPY go.sum .
 RUN go mod download
 COPY . .
+RUN cd ebpftracer && make build
+RUN cd ~
 ARG VERSION=unknown
-RUN CGO_ENABLED=1 go build -mod=readonly -ldflags "-X main.version=$VERSION" -o coroot-node-agent .
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -mod=readonly -ldflags "-X main.version=$VERSION" -o node-agent .
 
 FROM registry.access.redhat.com/ubi9/ubi
 
 ARG VERSION=unknown
-LABEL name="coroot-node-agent" \
-      vendor="Coroot, Inc." \
+LABEL name="node-agent" \
+      vendor="Inc." \
       version=${VERSION} \
-      summary="Coroot Node Agent."
+      summary="Node Agent."
 
 COPY LICENSE /licenses/LICENSE
 
-COPY --from=builder /tmp/src/coroot-node-agent /usr/bin/coroot-node-agent
-ENTRYPOINT ["coroot-node-agent"]
+COPY --from=builder /tmp/src/node-agent /usr/bin/node-agent
+ENTRYPOINT ["node-agent"]
