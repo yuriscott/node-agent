@@ -15,7 +15,7 @@ FROM registry.access.redhat.com/ubi9/ubi
 
 ARG VERSION=unknown
 LABEL name="node-agent" \
-      vendor="Inc." \
+      vendor="Node.Inc." \
       version=${VERSION} \
       summary="Node Agent."
 
