@@ -2,10 +2,6 @@ package main
 
 import (
 	"bytes"
-	"github.com/coroot/coroot-node-agent/containers"
-	"github.com/coroot/coroot-node-agent/logs"
-	"github.com/coroot/coroot-node-agent/prom"
-	"github.com/coroot/coroot-node-agent/tracing"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -13,10 +9,14 @@ import (
 	"strings"
 
 	"github.com/coroot/coroot-node-agent/common"
+	"github.com/coroot/coroot-node-agent/containers"
 	"github.com/coroot/coroot-node-agent/flags"
+	"github.com/coroot/coroot-node-agent/logs"
 	"github.com/coroot/coroot-node-agent/node"
 	"github.com/coroot/coroot-node-agent/proc"
 	"github.com/coroot/coroot-node-agent/profiling"
+	"github.com/coroot/coroot-node-agent/prom"
+	"github.com/coroot/coroot-node-agent/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sys/unix"
@@ -127,35 +127,33 @@ func main() {
 	machineId := machineID()
 	systemUuid := systemUUID()
 
+	tracing.Init(machineId, hostname, version)
+	logs.Init(machineId, hostname, version)
+
 	registry := prometheus.NewRegistry()
 	registerer := prometheus.WrapRegistererWith(prometheus.Labels{"machine_id": machineId, "system_uuid": systemUuid}, registry)
+
 	registerer.MustRegister(info("node_agent_info", version))
 
 	if err := registerer.Register(node.NewCollector(hostname, kv)); err != nil {
 		klog.Exitln(err)
 	}
-	// tracing routing
-	go func() {
-		tracing.Init(machineId, hostname, version)
-		logs.Init(machineId, hostname, version)
-	}()
-	// profile routing
-	go func() {
-		processInfoCh := profiling.Init(machineId, hostname)
-		cr, err := containers.NewRegistry(registerer, processInfoCh)
-		if err != nil {
-			klog.Exitln(err)
-		}
-		defer cr.Close()
-		profiling.Start()
-		defer profiling.Stop()
-	}()
-	// metrics routing
-	go func() {
-		if err := prom.StartAgent(machineId); err != nil {
-			klog.Exitln(err)
-		}
-	}()
+
+	processInfoCh := profiling.Init(machineId, hostname)
+
+	cr, err := containers.NewRegistry(registerer, processInfoCh)
+	if err != nil {
+		klog.Exitln(err)
+	}
+	defer cr.Close()
+
+	profiling.Start()
+	defer profiling.Stop()
+
+	if err := prom.StartAgent(machineId); err != nil {
+		klog.Exitln(err)
+	}
+
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{ErrorLog: logger{}, Registry: registerer}))
 	klog.Infoln("listening on:", *flags.ListenAddress)
 	klog.Errorln(http.ListenAndServe(*flags.ListenAddress, nil))
