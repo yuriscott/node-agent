@@ -73,6 +73,6 @@ func init() {
 	}
 
 	if *MetricsEndpoint != nil {
-		*ListenAddress = "127.0.0.1:10300"
+		*ListenAddress = "0.0.0.0:10300"
 	}
 }
